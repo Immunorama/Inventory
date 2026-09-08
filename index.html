@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สแกน Data Matrix น้ำยา</title>
+    <!-- ดึง ZXing Library สำหรับสแกน Data Matrix -->
+    <script type="text/javascript" src="https://unpkg.com/@zxing/library@latest"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 15px; text-align: center; }
+        #video-container { width: 100%; max-width: 400px; margin: auto; position: relative; }
+        video { width: 100%; border-radius: 8px; border: 2px solid #007bff; }
+        .result-box { margin-top: 15px; text-align: left; background: #f8f9fa; padding: 12px; border-radius: 6px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h2>สแกนบาร์โค้ดน้ำยา (Data Matrix)</h2>
+    
+    <div id="video-container">
+        <video id="video"></video>
+    </div>
+
+    <button onclick="startScan()">เปิดกล้องสแกน</button>
+
+    <div class="result-box">
+        <p><strong>Raw Data:</strong> <span id="rawText">-</span></p>
+        <p><strong>Assay / GTIN (01):</strong> <span id="gtin">-</span></p>
+        <p><strong>Lot No. (10):</strong> <span id="lot">-</span></p>
+        <p><strong>Exp Date (17):</strong> <span id="exp">-</span></p>
+    </div>
+
+    <script>
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        let selectedDeviceId;
+
+        async function startScan() {
+            try {
+                // ขอรายการกล้องในเครื่อง (เลือกกล้องหลังอัตโนมัติ)
+                const videoInputDevices = await codeReader.listVideoInputDevices();
+                
+                // ค้นหากล้องหลัง (Environment/Back camera)
+                const backCamera = videoInputDevices.find(device => 
+                    device.label.toLowerCase().includes('back') || 
+                    device.label.toLowerCase().includes('rear') ||
+                    device.label.toLowerCase().includes('environment')
+                ) || videoInputDevices[0];
+
+                selectedDeviceId = backCamera.deviceId;
+
+                // เริ่มการสแกนจากวิดีโอแบบ Real-time
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                    if (result) {
+                        const rawText = result.getText();
+                        document.getElementById('rawText').innerText = rawText;
+
+                        // ส่งข้อมูลไปแยกค่า GS1 AI
+                        parseGS1DataMatrix(rawText);
+
+                        // หยุดสแกนชั่วคราวหลังเจอข้อมูล
+                        codeReader.reset();
+                    }
+                });
+
+            } catch (err) {
+                alert('ไม่สามารถเข้าถึงกล้องได้: ' + err);
+            }
+        }
+
+        // ฟังก์ชันแยกข้อมูล GS1 AI (01, 10, 17)
+        function parseGS1DataMatrix(raw) {
+            // ทำการแทนที่ตัวแบ่งกลุ่มข้อมูล (Group Separator)
+            const cleanText = raw.replace(/[\u001d\u001e]/g, '');
+
+            // ตัวอย่างการใช้ Regex ดึงค่าเบื้องต้น
+            const gtinMatch = cleanText.match(/01(\d{14})/);
+            const expMatch = cleanText.match(/17(\d{6})/);
+            const lotMatch = cleanText.match(/10([A-Za-z0-9\-]+)/);
+
+            document.getElementById('gtin').innerText = gtinMatch ? gtinMatch[1] : 'ไม่พบ';
+            
+            if (expMatch) {
+                const y = expMatch[1].substring(0, 2);
+                const m = expMatch[1].substring(2, 4);
+                const d = expMatch[1].substring(4, 6);
+                document.getElementById('exp').innerText = `20${y}-${m}-${d}`;
+            } else {
+                document.getElementById('exp').innerText = 'ไม่พบ';
+            }
+
+            document.getElementById('lot').innerText = lotMatch ? lotMatch[1] : 'ไม่พบ';
+        }
+    </script>
+</body>
+</html>
