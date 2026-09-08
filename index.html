@@ -69,28 +69,67 @@
         }
 
         // ฟังก์ชันแยกข้อมูล GS1 AI (01, 10, 17)
-        function parseGS1DataMatrix(raw) {
-            // ทำการแทนที่ตัวแบ่งกลุ่มข้อมูล (Group Separator)
-            const cleanText = raw.replace(/[\u001d\u001e]/g, '');
+        function parseGS1DataMatrix(rawText) {
+    let result = { gtin: 'ไม่พบ', exp: 'ไม่พบ', lot: 'ไม่พบ' };
 
-            // ตัวอย่างการใช้ Regex ดึงค่าเบื้องต้น
-            const gtinMatch = cleanText.match(/01(\d{14})/);
-            const expMatch = cleanText.match(/17(\d{6})/);
-            const lotMatch = cleanText.match(/10([A-Za-z0-9\-]+)/);
+    if (!rawText) return result;
 
-            document.getElementById('gtin').innerText = gtinMatch ? gtinMatch[1] : 'ไม่พบ';
-            
-            if (expMatch) {
-                const y = expMatch[1].substring(0, 2);
-                const m = expMatch[1].substring(2, 4);
-                const d = expMatch[1].substring(4, 6);
-                document.getElementById('exp').innerText = `20${y}-${m}-${d}`;
-            } else {
-                document.getElementById('exp').innerText = 'ไม่พบ';
-            }
+    // รูปแบบที่ 1: ข้อความที่มีวงเล็บระบุ AI เช่น (01)...(17)...(10)...
+    if (rawText.includes('(01)') || rawText.includes('(10)') || rawText.includes('(17)')) {
+        const gtinMatch = rawText.match(/\(01\)(\d{14})/);
+        const expMatch = rawText.match(/\(17\)(\d{6})/);
+        const lotMatch = rawText.match(/\(10\)([^()]+)/);
 
-            document.getElementById('lot').innerText = lotMatch ? lotMatch[1] : 'ไม่พบ';
+        if (gtinMatch) result.gtin = gtinMatch[1];
+        if (expMatch) {
+            const [, y, m, d] = expMatch[1].match(/(..)(..)(..)/);
+            result.exp = `20${y}-${m}-${d}`;
         }
+        if (lotMatch) result.lot = lotMatch[1].trim();
+        return result;
+    }
+
+    // รูปแบบที่ 2: RAW Stream ตามมาตรฐาน GS1 (ใช้ตัวอักษร GS ASCII 29 คั่น)
+    let pos = 0;
+    while (pos < rawText.length) {
+        // ข้ามตัวอักษรควบคุม GS (ASCII 29 / \u001d)
+        if (rawText.charCodeAt(pos) === 29) {
+            pos++;
+            continue;
+        }
+
+        // AI 01: GTIN (ความยาวคงที่ 14 หลัก)
+        if (rawText.startsWith('01', pos)) {
+            result.gtin = rawText.substr(pos + 2, 14);
+            pos += 16;
+        }
+        // AI 17: Expiration Date (ความยาวคงที่ 6 หลัก YYMMDD)
+        else if (rawText.startsWith('17', pos)) {
+            const expStr = rawText.substr(pos + 2, 6);
+            const y = expStr.substr(0, 2);
+            const m = expStr.substr(2, 2);
+            const d = expStr.substr(4, 2);
+            result.exp = `20${y}-${m}-${d}`;
+            pos += 8;
+        }
+        // AI 10: Lot Number (ความยาวไม่แน่นอน จบเมื่อเจอ ASCII 29 หรือหมดข้อความ)
+        else if (rawText.startsWith('10', pos)) {
+            pos += 2;
+            let lotVal = '';
+            while (pos < rawText.length && rawText.charCodeAt(pos) !== 29) {
+                lotVal += rawText[pos];
+                pos++;
+            }
+            result.lot = lotVal;
+        }
+        // หากเจอ AI อื่นๆ ให้ข้ามไปทีละตำแหน่งเพื่อหาจุดตัดถัดไป
+        else {
+            pos++;
+        }
+    }
+
+    return result;
+}
     </script>
 </body>
 </html>
