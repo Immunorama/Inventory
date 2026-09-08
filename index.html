@@ -1,135 +1,336 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>สแกน Data Matrix น้ำยา</title>
-    <!-- ดึง ZXing Library สำหรับสแกน Data Matrix -->
+    <title>ระบบสแกน Data Matrix น้ำยาเคมีวิเคราะห์</title>
+    <!-- เรียกใช้ ZXing Library สำหรับสแกนบาร์โค้ดทุกประเภท -->
     <script type="text/javascript" src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { font-family: Arial, sans-serif; padding: 15px; text-align: center; }
-        #video-container { width: 100%; max-width: 400px; margin: auto; position: relative; }
-        video { width: 100%; border-radius: 8px; border: 2px solid #007bff; }
-        .result-box { margin-top: 15px; text-align: left; background: #f8f9fa; padding: 12px; border-radius: 6px; }
-        button { padding: 10px 20px; font-size: 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            color: #333;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        h2 {
+            font-size: 1.25rem;
+            text-align: center;
+            margin-bottom: 15px;
+            color: #1a73e8;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            height: 260px;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .scanner-laser {
+            position: absolute;
+            width: 80%;
+            height: 80%;
+            border: 2px dashed #00ff66;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.3);
+            pointer-events: none;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-start { background-color: #1a73e8; color: #fff; }
+        .btn-start:hover { background-color: #1557b0; }
+        .btn-stop { background-color: #dc3545; color: #fff; }
+        .btn-stop:hover { background-color: #bd2130; }
+
+        .result-card {
+            margin-top: 20px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .result-card h3 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 5px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .data-label {
+            font-weight: bold;
+            color: #6c757d;
+        }
+
+        .data-value {
+            font-weight: 600;
+            color: #212529;
+            word-break: break-all;
+            text-align: right;
+        }
+
+        .data-value.highlight {
+            color: #28a745;
+        }
+
+        .raw-box {
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
 
+<div class="container">
     <h2>สแกนบาร์โค้ดน้ำยา (Data Matrix)</h2>
-    
-    <div id="video-container">
+
+    <div class="video-wrapper">
         <video id="video"></video>
+        <div class="scanner-laser"></div>
     </div>
 
-    <button onclick="startScan()">เปิดกล้องสแกน</button>
-
-    <div class="result-box">
-        <p><strong>Raw Data:</strong> <span id="rawText">-</span></p>
-        <p><strong>Assay / GTIN (01):</strong> <span id="gtin">-</span></p>
-        <p><strong>Lot No. (10):</strong> <span id="lot">-</span></p>
-        <p><strong>Exp Date (17):</strong> <span id="exp">-</span></p>
+    <div class="btn-group">
+        <button class="btn-start" onclick="startScanner()">เปิดกล้อง</button>
+        <button class="btn-stop" onclick="stopScanner()">ปิดกล้อง</button>
     </div>
 
-    <script>
-        const codeReader = new ZXing.BrowserMultiFormatReader();
-        let selectedDeviceId;
+    <div class="result-card">
+        <h3>ผลการอ่านข้อมูล</h3>
+        <div class="data-row">
+            <span class="data-label">รูปแบบบาร์โค้ด:</span>
+            <span class="data-value" id="resType">-</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">GTIN / Assay ID:</span>
+            <span class="data-value highlight" id="resGtin">-</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">Lot No. (10):</span>
+            <span class="data-value highlight" id="resLot">-</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">วันหมดอายุ (17):</span>
+            <span class="data-value highlight" id="resExp">-</span>
+        </div>
+        
+        <div style="margin-top: 10px;">
+            <span class="data-label">ข้อความ RAW:</span>
+            <div class="raw-box" id="resRaw">-</div>
+        </div>
+    </div>
+</div>
 
-        async function startScan() {
-            try {
-                // ขอรายการกล้องในเครื่อง (เลือกกล้องหลังอัตโนมัติ)
-                const videoInputDevices = await codeReader.listVideoInputDevices();
-                
-                // ค้นหากล้องหลัง (Environment/Back camera)
-                const backCamera = videoInputDevices.find(device => 
-                    device.label.toLowerCase().includes('back') || 
-                    device.label.toLowerCase().includes('rear') ||
-                    device.label.toLowerCase().includes('environment')
-                ) || videoInputDevices[0];
+<script>
+    let codeReader = null;
+    let isScanning = false;
 
-                selectedDeviceId = backCamera.deviceId;
-
-                // เริ่มการสแกนจากวิดีโอแบบ Real-time
-                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-                    if (result) {
-                        const rawText = result.getText();
-                        document.getElementById('rawText').innerText = rawText;
-
-                        // ส่งข้อมูลไปแยกค่า GS1 AI
-                        parseGS1DataMatrix(rawText);
-
-                        // หยุดสแกนชั่วคราวหลังเจอข้อมูล
-                        codeReader.reset();
-                    }
-                });
-
-            } catch (err) {
-                alert('ไม่สามารถเข้าถึงกล้องได้: ' + err);
+    // 1. เริ่มต้นระบบการสแกนกล้อง
+    async function startScanner() {
+        if (isScanning) return;
+        
+        try {
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            
+            // ดึงรายการกล้องทั้งหมดในอุปกรณ์
+            const videoInputDevices = await codeReader.listVideoInputDevices();
+            
+            if (videoInputDevices.length === 0) {
+                alert("ไม่พบกล้องในอุปกรณ์นี้");
+                return;
             }
+
+            // เลือกกล้องหลัง (Environment/Back Camera) อัตโนมัติ
+            const backCamera = videoInputDevices.find(device => 
+                device.label.toLowerCase().includes('back') || 
+                device.label.toLowerCase().includes('rear') ||
+                device.label.toLowerCase().includes('environment')
+            ) || videoInputDevices[0];
+
+            isScanning = true;
+
+            // เริ่มอ่านภาพจากกล้อง
+            codeReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, error) => {
+                if (result) {
+                    const rawText = result.getText();
+                    
+                    // สั่นเตือนเมื่อสแกนสำเร็จ (สำหรับมือถือที่รองรับ)
+                    if (navigator.vibrate) navigator.vibrate(100);
+
+                    // ประมวลผลถอดรหัสข้อมูล GS1 / HIBC
+                    const parsedData = parseMedicalBarcode(rawText);
+                    
+                    // แสดงผลบนหน้าจอ
+                    displayResults(parsedData);
+                }
+            });
+
+        } catch (err) {
+            alert("ไม่สามารถเข้าถึงกล้องได้: " + err.message);
+            isScanning = false;
+        }
+    }
+
+    // 2. หยุดการทำงานของกล้อง
+    function stopScanner() {
+        if (codeReader && isScanning) {
+            codeReader.reset();
+            isScanning = false;
+        }
+    }
+
+    // 3. ฟังก์ชันถอดรหัสบาร์โค้ดน้ำยาการแพทย์ (GS1 + HIBC + RAW)
+    function parseMedicalBarcode(rawText) {
+        let result = {
+            type: 'ไม่ทราบรูปแบบ',
+            gtin: 'ไม่พบ',
+            lot: 'ไม่พบ',
+            exp: 'ไม่พบ',
+            raw: rawText
+        };
+
+        if (!rawText) return result;
+
+        // ลบอักขระระบุประเภทบาร์โค้ด เช่น ]d2, ]e0 ที่ติดมาจากเครื่องสแกน
+        let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '').trim();
+
+        // --- กรณีที่ 1: มาตรฐาน HIBC (ขึ้นต้นด้วย +) ---
+        if (cleanRaw.startsWith('+')) {
+            result.type = 'HIBC Standard';
+            const parts = cleanRaw.split('/');
+            result.gtin = parts[0].substring(1); 
+
+            if (parts.length > 1) {
+                const sec = parts[1];
+                const expMatch = sec.match(/\$\$3(\d{6})/);
+                if (expMatch) {
+                    const [, y, m, d] = expMatch[1].match(/(..)(..)(..)/);
+                    result.exp = `20${y}-${m}-${d}`;
+                }
+
+                const lotMatch = sec.match(/LOT([A-Za-z0-9\-]+)/) || sec.match(/\$\$3\d{6}([A-Za-z0-9\-]+)/);
+                if (lotMatch) result.lot = lotMatch[1];
+            }
+            return result;
         }
 
-        // ฟังก์ชันแยกข้อมูล GS1 AI (01, 10, 17)
-        function parseGS1DataMatrix(rawText) {
-    let result = { gtin: 'ไม่พบ', exp: 'ไม่พบ', lot: 'ไม่พบ' };
+        // --- กรณีที่ 2: GS1 แบบมีวงเล็บ (01)...(17)...(10)... ---
+        if (cleanRaw.includes('(01)') || cleanRaw.includes('(10)') || cleanRaw.includes('(17)')) {
+            result.type = 'GS1 (Bracketed)';
+            const gtin = cleanRaw.match(/\(01\)(\d{14})/);
+            const exp = cleanRaw.match(/\(17\)(\d{6})/);
+            const lot = cleanRaw.match(/\(10\)([^()]+)/);
 
-    if (!rawText) return result;
+            if (gtin) result.gtin = gtin[1];
+            if (exp) {
+                const [, y, m, d] = exp[1].match(/(..)(..)(..)/);
+                result.exp = `20${y}-${m}-${d}`;
+            }
+            if (lot) result.lot = lot[1].trim();
+            return result;
+        }
 
-    // รูปแบบที่ 1: ข้อความที่มีวงเล็บระบุ AI เช่น (01)...(17)...(10)...
-    if (rawText.includes('(01)') || rawText.includes('(10)') || rawText.includes('(17)')) {
-        const gtinMatch = rawText.match(/\(01\)(\d{14})/);
-        const expMatch = rawText.match(/\(17\)(\d{6})/);
-        const lotMatch = rawText.match(/\(10\)([^()]+)/);
+        // --- กรณีที่ 3: GS1 Raw Stream (ใช้งานทั่วไปบน Data Matrix) ---
+        result.type = 'GS1 Data Matrix';
+        
+        // แปลงตัวอักษรควบคุมการแบ่งกลุ่มข้อมูล (ASCII 29 GS) เป็นเครื่องหมาย |
+        let stream = cleanRaw.replace(/[\u001d\u001e\u001c\u001f]/g, '|');
 
-        if (gtinMatch) result.gtin = gtinMatch[1];
+        // ดึง GTIN (AI 01) - ความยาวคงที่ 14 หลัก
+        const gtinMatch = stream.match(/01(\d{14})/);
+        if (gtinMatch) {
+            result.gtin = gtinMatch[1];
+        }
+
+        // ดึง Expiration Date (AI 17) - ความยาวคงที่ 6 หลัก (YYMMDD)
+        const expMatch = stream.match(/17(\d{6})/);
         if (expMatch) {
-            const [, y, m, d] = expMatch[1].match(/(..)(..)(..)/);
+            const y = expMatch[1].substr(0, 2);
+            const m = expMatch[1].substr(2, 2);
+            const d = expMatch[1].substr(4, 2);
             result.exp = `20${y}-${m}-${d}`;
         }
-        if (lotMatch) result.lot = lotMatch[1].trim();
+
+        // ดึง Lot Number (AI 10) - ความยาวไม่แน่นอน
+        const lotMatch = stream.match(/10([^|]{1,20})/);
+        if (lotMatch) {
+            let rawLot = lotMatch[1];
+            // ตัดคำกรณีข้อความไม่มี ASCII 29 คั่น แล้ววิ่งไปชน AI ตัวอื่น
+            rawLot = rawLot.split(/(?:17\d{6}|01\d{14}|21[A-Za-z0-9]+)/)[0];
+            result.lot = rawLot.trim();
+        }
+
         return result;
     }
 
-    // รูปแบบที่ 2: RAW Stream ตามมาตรฐาน GS1 (ใช้ตัวอักษร GS ASCII 29 คั่น)
-    let pos = 0;
-    while (pos < rawText.length) {
-        // ข้ามตัวอักษรควบคุม GS (ASCII 29 / \u001d)
-        if (rawText.charCodeAt(pos) === 29) {
-            pos++;
-            continue;
-        }
-
-        // AI 01: GTIN (ความยาวคงที่ 14 หลัก)
-        if (rawText.startsWith('01', pos)) {
-            result.gtin = rawText.substr(pos + 2, 14);
-            pos += 16;
-        }
-        // AI 17: Expiration Date (ความยาวคงที่ 6 หลัก YYMMDD)
-        else if (rawText.startsWith('17', pos)) {
-            const expStr = rawText.substr(pos + 2, 6);
-            const y = expStr.substr(0, 2);
-            const m = expStr.substr(2, 2);
-            const d = expStr.substr(4, 2);
-            result.exp = `20${y}-${m}-${d}`;
-            pos += 8;
-        }
-        // AI 10: Lot Number (ความยาวไม่แน่นอน จบเมื่อเจอ ASCII 29 หรือหมดข้อความ)
-        else if (rawText.startsWith('10', pos)) {
-            pos += 2;
-            let lotVal = '';
-            while (pos < rawText.length && rawText.charCodeAt(pos) !== 29) {
-                lotVal += rawText[pos];
-                pos++;
-            }
-            result.lot = lotVal;
-        }
-        // หากเจอ AI อื่นๆ ให้ข้ามไปทีละตำแหน่งเพื่อหาจุดตัดถัดไป
-        else {
-            pos++;
-        }
+    // 4. แสดงผลข้อมูลลงในหน้าเว็บ
+    function displayResults(data) {
+        document.getElementById('resType').innerText = data.type;
+        document.getElementById('resGtin').innerText = data.gtin;
+        document.getElementById('resLot').innerText = data.lot;
+        document.getElementById('resExp').innerText = data.exp;
+        document.getElementById('resRaw').innerText = data.raw;
     }
+</script>
 
-    return result;
-}
-    </script>
 </body>
 </html>
