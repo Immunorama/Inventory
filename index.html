@@ -250,8 +250,19 @@
 
     if (!rawText) return result;
 
-    // ตัด Prefix ที่เครื่องสแกนอาจติดมาออก เช่น ]d2
+    // 1. ลบ Symbology Identifier มาตรฐาน เช่น ]d1, ]d2, ]e0 ออกจากด้านหน้า
     let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '').trim();
+
+    // 2. ลบตัวอักษรควบคุมพิเศษ (Control Characters / ASCII 0-31 / FNC1) ที่ติดมาตัวแรกสุด
+    cleanRaw = cleanRaw.replace(/^[\u0000-\u001F\u007F-\u009F]/, '');
+
+    // 3. ตรวจสอบกรณี iPhone 14 อ่านความยาวเกินมา 1 ตัวอักษร ให้ตัดตัวแรกออกเพื่อให้ตรงกับสูตร Excel
+    const excelLengths = [32, 39, 42, 44, 48, 56];
+    if (excelLengths.includes(cleanRaw.length - 1)) {
+        // หากตัดตัวแรกออกแล้วความยาวไปตรงกับ 32, 39, 42, 44, 48, 56 ให้ตัดออกทันที
+        cleanRaw = cleanRaw.substring(1);
+    }
+
     const len = cleanRaw.length;
 
     // ฟังก์ชันย่อยสำหรับแปลงวันที่ YYMMDD เป็น YYYY-MM-DD
@@ -265,53 +276,52 @@
 
     // ========================================================
     // ประมวลผลตามสูตร Excel (เช็กจากความยาวข้อความ LEN)
-    // หมายเหตุ: ตำแหน่ง MID ใน Excel นับเริ่มที่ 1 แต่ใน JS นับเริ่มที่ 0 (ต้อง -1)
     // ========================================================
     if (len === 32) {
         result.type = 'Fixed Length (32)';
-        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
-        result.lot  = cleanRaw.substr(18, 6);   // MID(A2, 19, 6)
-        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
+        result.gtin = cleanRaw.substr(2, 14);
+        result.lot  = cleanRaw.substr(18, 6);
+        result.exp  = formatDate(cleanRaw.substr(26, 6));
         return result;
     } 
     else if (len === 39) {
         result.type = 'Fixed Length (39)';
-        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
-        result.lot  = cleanRaw.substr(34, 3);   // MID(A2, 35, 3)
-        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
+        result.gtin = cleanRaw.substr(2, 14);
+        result.lot  = cleanRaw.substr(34, 3);
+        result.exp  = formatDate(cleanRaw.substr(26, 6));
         return result;
     } 
     else if (len === 42) {
         result.type = 'Fixed Length (42)';
-        result.gtin = cleanRaw.substr(36, 6);   // MID(A2, 37, 6)
-        result.lot  = cleanRaw.substr(26, 7);   // MID(A2, 27, 7)
-        result.exp  = formatDate(cleanRaw.substr(18, 6)); // MID(A2, 19, 6)
+        result.gtin = cleanRaw.substr(36, 6);
+        result.lot  = cleanRaw.substr(26, 7);
+        result.exp  = formatDate(cleanRaw.substr(18, 6));
         return result;
     } 
     else if (len === 44) {
         result.type = 'Fixed Length (44)';
-        result.gtin = cleanRaw.substr(36, 8);   // MID(A2, 37, 8)
-        result.lot  = cleanRaw.substr(18, 7);   // MID(A2, 19, 7)
-        result.exp  = formatDate(cleanRaw.substr(27, 6)); // MID(A2, 28, 6)
+        result.gtin = cleanRaw.substr(36, 8);
+        result.lot  = cleanRaw.substr(18, 7);
+        result.exp  = formatDate(cleanRaw.substr(27, 6));
         return result;
     } 
     else if (len === 48) {
         result.type = 'Fixed Length (48)';
-        result.gtin = cleanRaw.substr(37, 11);  // MID(A2, 38, 11)
-        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
-        result.exp  = formatDate(cleanRaw.substr(28, 6)); // MID(A2, 29, 6)
+        result.gtin = cleanRaw.substr(37, 11);
+        result.lot  = cleanRaw.substr(18, 8);
+        result.exp  = formatDate(cleanRaw.substr(28, 6));
         return result;
     } 
     else if (len === 56) {
         result.type = 'Fixed Length (56)';
-        result.gtin = cleanRaw.substr(45, 11);  // MID(A2, 46, 11)
-        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
-        result.exp  = formatDate(cleanRaw.substr(36, 6)); // MID(A2, 37, 6)
+        result.gtin = cleanRaw.substr(45, 11);
+        result.lot  = cleanRaw.substr(18, 8);
+        result.exp  = formatDate(cleanRaw.substr(36, 6));
         return result;
     }
 
     // ========================================================
-    // กรณีที่ไม่ตรงกับความยาว 6 รูปแบบข้างต้น (Fallback to Dynamic GS1/HIBC)
+    // กรณีที่ไม่ตรงกับความยาว 6 รูปแบบข้างต้น (Dynamic Fallback)
     // ========================================================
     if (cleanRaw.startsWith('+')) {
         result.type = 'HIBC Standard';
@@ -327,8 +337,7 @@
         return result;
     }
 
-    // GS1 Standard parsing สแกนทั่วไป
-    result.type = 'GS1 Dynamic';
+    result.type = 'GS1 Data Matrix';
     let stream = cleanRaw.replace(/[\u001d\u001e\u001c\u001f]/g, '|');
     const gtinMatch = stream.match(/01(\d{14})/);
     const expMatch = stream.match(/17(\d{6})/);
@@ -343,7 +352,6 @@
 
     return result;
 }
-
     // 4. แสดงผลข้อมูลลงในหน้าเว็บ
     function displayResults(data) {
         document.getElementById('resType').innerText = data.type;
