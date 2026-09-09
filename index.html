@@ -250,18 +250,12 @@
 
     if (!rawText) return result;
 
-    // 1. ลบ Symbology Identifier มาตรฐาน เช่น ]d1, ]d2, ]e0 ออกจากด้านหน้า
-    let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '').trim();
+    // 1. ลบ Symbology Identifier ที่ติดมาจากระบบสแกน เช่น ]d1, ]d2, ]e0
+    let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '');
 
-    // 2. ลบตัวอักษรควบคุมพิเศษ (Control Characters / ASCII 0-31 / FNC1) ที่ติดมาตัวแรกสุด
-    cleanRaw = cleanRaw.replace(/^[\u0000-\u001F\u007F-\u009F]/, '');
-
-    // 3. ตรวจสอบกรณี iPhone 14 อ่านความยาวเกินมา 1 ตัวอักษร ให้ตัดตัวแรกออกเพื่อให้ตรงกับสูตร Excel
-    const excelLengths = [32, 39, 42, 44, 48, 56];
-    if (excelLengths.includes(cleanRaw.length - 1)) {
-        // หากตัดตัวแรกออกแล้วความยาวไปตรงกับ 32, 39, 42, 44, 48, 56 ให้ตัดออกทันที
-        cleanRaw = cleanRaw.substring(1);
-    }
+    // 2. ลบ Control Characters และอักขระซ่อนทั้งหมดที่พิมพ์ไม่ได้บนคีย์บอร์ด
+    // (ครอบคลุม ASCII 0-31, ASCII 127-159, FNC1 และ Unicode Control Characters)
+    cleanRaw = cleanRaw.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '').trim();
 
     const len = cleanRaw.length;
 
@@ -275,48 +269,48 @@
     };
 
     // ========================================================
-    // ประมวลผลตามสูตร Excel (เช็กจากความยาวข้อความ LEN)
+    // ประมวลผลตามสูตร Excel (เช็กจากความยาวข้อความ LEN ที่ลบอักขระขยะออกแล้ว)
     // ========================================================
     if (len === 32) {
         result.type = 'Fixed Length (32)';
-        result.gtin = cleanRaw.substr(2, 14);
-        result.lot  = cleanRaw.substr(18, 6);
-        result.exp  = formatDate(cleanRaw.substr(26, 6));
+        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
+        result.lot  = cleanRaw.substr(18, 6);   // MID(A2, 19, 6)
+        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
         return result;
     } 
     else if (len === 39) {
         result.type = 'Fixed Length (39)';
-        result.gtin = cleanRaw.substr(2, 14);
-        result.lot  = cleanRaw.substr(34, 3);
-        result.exp  = formatDate(cleanRaw.substr(26, 6));
+        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
+        result.lot  = cleanRaw.substr(34, 3);   // MID(A2, 35, 3)
+        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
         return result;
     } 
     else if (len === 42) {
         result.type = 'Fixed Length (42)';
-        result.gtin = cleanRaw.substr(36, 6);
-        result.lot  = cleanRaw.substr(26, 7);
-        result.exp  = formatDate(cleanRaw.substr(18, 6));
+        result.gtin = cleanRaw.substr(36, 6);   // MID(A2, 37, 6)
+        result.lot  = cleanRaw.substr(26, 7);   // MID(A2, 27, 7)
+        result.exp  = formatDate(cleanRaw.substr(18, 6)); // MID(A2, 19, 6)
         return result;
     } 
     else if (len === 44) {
         result.type = 'Fixed Length (44)';
-        result.gtin = cleanRaw.substr(36, 8);
-        result.lot  = cleanRaw.substr(18, 7);
-        result.exp  = formatDate(cleanRaw.substr(27, 6));
+        result.gtin = cleanRaw.substr(36, 8);   // MID(A2, 37, 8)
+        result.lot  = cleanRaw.substr(18, 7);   // MID(A2, 19, 7)
+        result.exp  = formatDate(cleanRaw.substr(27, 6)); // MID(A2, 28, 6)
         return result;
     } 
     else if (len === 48) {
         result.type = 'Fixed Length (48)';
-        result.gtin = cleanRaw.substr(37, 11);
-        result.lot  = cleanRaw.substr(18, 8);
-        result.exp  = formatDate(cleanRaw.substr(28, 6));
+        result.gtin = cleanRaw.substr(37, 11);  // MID(A2, 38, 11)
+        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
+        result.exp  = formatDate(cleanRaw.substr(28, 6)); // MID(A2, 29, 6)
         return result;
     } 
     else if (len === 56) {
         result.type = 'Fixed Length (56)';
-        result.gtin = cleanRaw.substr(45, 11);
-        result.lot  = cleanRaw.substr(18, 8);
-        result.exp  = formatDate(cleanRaw.substr(36, 6));
+        result.gtin = cleanRaw.substr(45, 11);  // MID(A2, 46, 11)
+        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
+        result.exp  = formatDate(cleanRaw.substr(36, 6)); // MID(A2, 37, 6)
         return result;
     }
 
@@ -338,10 +332,9 @@
     }
 
     result.type = 'GS1 Data Matrix';
-    let stream = cleanRaw.replace(/[\u001d\u001e\u001c\u001f]/g, '|');
-    const gtinMatch = stream.match(/01(\d{14})/);
-    const expMatch = stream.match(/17(\d{6})/);
-    const lotMatch = stream.match(/10([^|]{1,20})/);
+    const gtinMatch = cleanRaw.match(/01(\d{14})/);
+    const expMatch = cleanRaw.match(/17(\d{6})/);
+    const lotMatch = cleanRaw.match(/10([A-Za-z0-9\-]+)/);
 
     if (gtinMatch) result.gtin = gtinMatch[1];
     if (expMatch) result.exp = formatDate(expMatch[1]);
