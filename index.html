@@ -129,10 +129,22 @@
         }
 
         .raw-box {
-            margin-top: 10px;
+            margin-top: 5px;
             font-family: monospace;
             font-size: 0.8rem;
             background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .cleaned-box {
+            margin-top: 5px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            background: #e8f5e9;
+            color: #1b5e20;
+            border: 1px solid #c8e6c9;
             padding: 8px;
             border-radius: 4px;
             word-break: break-all;
@@ -172,9 +184,20 @@
             <span class="data-label">วันหมดอายุ (17):</span>
             <span class="data-value highlight" id="resExp">-</span>
         </div>
+        <div class="data-row">
+            <span class="data-label">ความยาวตัวอักษร (LEN):</span>
+            <span class="data-value highlight" id="resLen">-</span>
+        </div>
         
+        <!-- ช่องแสดงข้อความหลังตัดอักขระขยะ -->
         <div style="margin-top: 10px;">
-            <span class="data-label">ข้อความ RAW:</span>
+            <span class="data-label">ข้อความ Cleaned (ใช้คำนวณ Excel):</span>
+            <div class="cleaned-box" id="resCleaned">-</div>
+        </div>
+
+        <!-- ช่องแสดง RAW จากกล้องเดิม -->
+        <div style="margin-top: 10px;">
+            <span class="data-label">ข้อความ RAW เดิมจากกล้อง:</span>
             <div class="raw-box" id="resRaw">-</div>
         </div>
     </div>
@@ -191,7 +214,6 @@
         try {
             codeReader = new ZXing.BrowserMultiFormatReader();
             
-            // ดึงรายการกล้องทั้งหมดในอุปกรณ์
             const videoInputDevices = await codeReader.listVideoInputDevices();
             
             if (videoInputDevices.length === 0) {
@@ -199,7 +221,6 @@
                 return;
             }
 
-            // เลือกกล้องหลัง (Environment/Back Camera) อัตโนมัติ
             const backCamera = videoInputDevices.find(device => 
                 device.label.toLowerCase().includes('back') || 
                 device.label.toLowerCase().includes('rear') ||
@@ -208,18 +229,14 @@
 
             isScanning = true;
 
-            // เริ่มอ่านภาพจากกล้อง
             codeReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, error) => {
                 if (result) {
                     const rawText = result.getText();
                     
-                    // สั่นเตือนเมื่อสแกนสำเร็จ (สำหรับมือถือที่รองรับ)
                     if (navigator.vibrate) navigator.vibrate(100);
 
-                    // ประมวลผลถอดรหัสข้อมูล GS1 / HIBC
                     const parsedData = parseMedicalBarcode(rawText);
                     
-                    // แสดงผลบนหน้าจอ
                     displayResults(parsedData);
                 }
             });
@@ -238,119 +255,123 @@
         }
     }
 
-    // 3. ฟังก์ชันถอดรหัสบาร์โค้ดน้ำยาการแพทย์ (GS1 + HIBC + RAW)
-   function parseMedicalBarcode(rawText) {
-    let result = {
-        type: 'ไม่ทราบรูปแบบ',
-        gtin: 'ไม่พบ',
-        lot: 'ไม่พบ',
-        exp: 'ไม่พบ',
-        raw: rawText
-    };
+    // 3. ฟังก์ชันถอดรหัสและลบตัวอักษรขยะ
+    function parseMedicalBarcode(rawText) {
+        let result = {
+            type: 'ไม่ทราบรูปแบบ',
+            gtin: 'ไม่พบ',
+            lot: 'ไม่พบ',
+            exp: 'ไม่พบ',
+            raw: rawText,
+            cleanRaw: '',
+            len: 0
+        };
 
-    if (!rawText) return result;
+        if (!rawText) return result;
 
-    // 1. ลบ Symbology Identifier ที่ติดมาจากระบบสแกน เช่น ]d1, ]d2, ]e0
-    let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '');
+        // ลบ Symbology Identifier (เช่น ]d1, ]d2)
+        let cleanRaw = rawText.replace(/^\][a-zA-Z0-9]{2}/, '');
 
-    // 2. ลบ Control Characters และอักขระซ่อนทั้งหมดที่พิมพ์ไม่ได้บนคีย์บอร์ด
-    // (ครอบคลุม ASCII 0-31, ASCII 127-159, FNC1 และ Unicode Control Characters)
-    cleanRaw = cleanRaw.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '').trim();
+        // ลบ Control Characters และอักขระซ่อนทั้งหมดที่พิมพ์ไม่ได้บนคีย์บอร์ด (ASCII 0-31, FNC1 ฯลฯ)
+        cleanRaw = cleanRaw.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '').trim();
 
-    const len = cleanRaw.length;
+        result.cleanRaw = cleanRaw;
+        result.len = cleanRaw.length;
 
-    // ฟังก์ชันย่อยสำหรับแปลงวันที่ YYMMDD เป็น YYYY-MM-DD
-    const formatDate = (yymmdd) => {
-        if (!yymmdd || yymmdd.length !== 6) return yymmdd;
-        const y = yymmdd.substr(0, 2);
-        const m = yymmdd.substr(2, 2);
-        const d = yymmdd.substr(4, 2);
-        return `20${y}-${m}-${d}`;
-    };
+        const len = cleanRaw.length;
 
-    // ========================================================
-    // ประมวลผลตามสูตร Excel (เช็กจากความยาวข้อความ LEN ที่ลบอักขระขยะออกแล้ว)
-    // ========================================================
-    if (len === 32) {
-        result.type = 'Fixed Length (32)';
-        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
-        result.lot  = cleanRaw.substr(18, 6);   // MID(A2, 19, 6)
-        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
-        return result;
-    } 
-    else if (len === 39) {
-        result.type = 'Fixed Length (39)';
-        result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
-        result.lot  = cleanRaw.substr(34, 3);   // MID(A2, 35, 3)
-        result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
-        return result;
-    } 
-    else if (len === 42) {
-        result.type = 'Fixed Length (42)';
-        result.gtin = cleanRaw.substr(36, 6);   // MID(A2, 37, 6)
-        result.lot  = cleanRaw.substr(26, 7);   // MID(A2, 27, 7)
-        result.exp  = formatDate(cleanRaw.substr(18, 6)); // MID(A2, 19, 6)
-        return result;
-    } 
-    else if (len === 44) {
-        result.type = 'Fixed Length (44)';
-        result.gtin = cleanRaw.substr(36, 8);   // MID(A2, 37, 8)
-        result.lot  = cleanRaw.substr(18, 7);   // MID(A2, 19, 7)
-        result.exp  = formatDate(cleanRaw.substr(27, 6)); // MID(A2, 28, 6)
-        return result;
-    } 
-    else if (len === 48) {
-        result.type = 'Fixed Length (48)';
-        result.gtin = cleanRaw.substr(37, 11);  // MID(A2, 38, 11)
-        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
-        result.exp  = formatDate(cleanRaw.substr(28, 6)); // MID(A2, 29, 6)
-        return result;
-    } 
-    else if (len === 56) {
-        result.type = 'Fixed Length (56)';
-        result.gtin = cleanRaw.substr(45, 11);  // MID(A2, 46, 11)
-        result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
-        result.exp  = formatDate(cleanRaw.substr(36, 6)); // MID(A2, 37, 6)
-        return result;
-    }
+        const formatDate = (yymmdd) => {
+            if (!yymmdd || yymmdd.length !== 6) return yymmdd;
+            const y = yymmdd.substr(0, 2);
+            const m = yymmdd.substr(2, 2);
+            const d = yymmdd.substr(4, 2);
+            return `20${y}-${m}-${d}`;
+        };
 
-    // ========================================================
-    // กรณีที่ไม่ตรงกับความยาว 6 รูปแบบข้างต้น (Dynamic Fallback)
-    // ========================================================
-    if (cleanRaw.startsWith('+')) {
-        result.type = 'HIBC Standard';
-        const parts = cleanRaw.split('/');
-        result.gtin = parts[0].substring(1);
-        if (parts.length > 1) {
-            const sec = parts[1];
-            const expMatch = sec.match(/\$\$3(\d{6})/);
-            if (expMatch) result.exp = formatDate(expMatch[1]);
-            const lotMatch = sec.match(/LOT([A-Za-z0-9\-]+)/) || sec.match(/\$\$3\d{6}([A-Za-z0-9\-]+)/);
-            if (lotMatch) result.lot = lotMatch[1];
+        // ========================================================
+        // ประมวลผลตามสูตร Excel (เช็กจาก Cleaned LEN)
+        // ========================================================
+        if (len === 32) {
+            result.type = 'Fixed Length (32)';
+            result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
+            result.lot  = cleanRaw.substr(18, 6);   // MID(A2, 19, 6)
+            result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
+            return result;
+        } 
+        else if (len === 39) {
+            result.type = 'Fixed Length (39)';
+            result.gtin = cleanRaw.substr(2, 14);   // MID(A2, 3, 14)
+            result.lot  = cleanRaw.substr(34, 3);   // MID(A2, 35, 3)
+            result.exp  = formatDate(cleanRaw.substr(26, 6)); // MID(A2, 27, 6)
+            return result;
+        } 
+        else if (len === 42) {
+            result.type = 'Fixed Length (42)';
+            result.gtin = cleanRaw.substr(36, 6);   // MID(A2, 37, 6)
+            result.lot  = cleanRaw.substr(26, 7);   // MID(A2, 27, 7)
+            result.exp  = formatDate(cleanRaw.substr(18, 6)); // MID(A2, 19, 6)
+            return result;
+        } 
+        else if (len === 44) {
+            result.type = 'Fixed Length (44)';
+            result.gtin = cleanRaw.substr(36, 8);   // MID(A2, 37, 8)
+            result.lot  = cleanRaw.substr(18, 7);   // MID(A2, 19, 7)
+            result.exp  = formatDate(cleanRaw.substr(27, 6)); // MID(A2, 28, 6)
+            return result;
+        } 
+        else if (len === 48) {
+            result.type = 'Fixed Length (48)';
+            result.gtin = cleanRaw.substr(37, 11);  // MID(A2, 38, 11)
+            result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
+            result.exp  = formatDate(cleanRaw.substr(28, 6)); // MID(A2, 29, 6)
+            return result;
+        } 
+        else if (len === 56) {
+            result.type = 'Fixed Length (56)';
+            result.gtin = cleanRaw.substr(45, 11);  // MID(A2, 46, 11)
+            result.lot  = cleanRaw.substr(18, 8);   // MID(A2, 19, 8)
+            result.exp  = formatDate(cleanRaw.substr(36, 6)); // MID(A2, 37, 6)
+            return result;
         }
+
+        // Fallback กรณีไม่เข้าเงื่อนไขความยาวข้างต้น
+        if (cleanRaw.startsWith('+')) {
+            result.type = 'HIBC Standard';
+            const parts = cleanRaw.split('/');
+            result.gtin = parts[0].substring(1);
+            if (parts.length > 1) {
+                const sec = parts[1];
+                const expMatch = sec.match(/\$\$3(\d{6})/);
+                if (expMatch) result.exp = formatDate(expMatch[1]);
+                const lotMatch = sec.match(/LOT([A-Za-z0-9\-]+)/) || sec.match(/\$\$3\d{6}([A-Za-z0-9\-]+)/);
+                if (lotMatch) result.lot = lotMatch[1];
+            }
+            return result;
+        }
+
+        result.type = 'GS1 Data Matrix';
+        const gtinMatch = cleanRaw.match(/01(\d{14})/);
+        const expMatch = cleanRaw.match(/17(\d{6})/);
+        const lotMatch = cleanRaw.match(/10([A-Za-z0-9\-]+)/);
+
+        if (gtinMatch) result.gtin = gtinMatch[1];
+        if (expMatch) result.exp = formatDate(expMatch[1]);
+        if (lotMatch) {
+            let rawLot = lotMatch[1].split(/(?:17\d{6}|01\d{14}|21[A-Za-z0-9]+)/)[0];
+            result.lot = rawLot.trim();
+        }
+
         return result;
     }
 
-    result.type = 'GS1 Data Matrix';
-    const gtinMatch = cleanRaw.match(/01(\d{14})/);
-    const expMatch = cleanRaw.match(/17(\d{6})/);
-    const lotMatch = cleanRaw.match(/10([A-Za-z0-9\-]+)/);
-
-    if (gtinMatch) result.gtin = gtinMatch[1];
-    if (expMatch) result.exp = formatDate(expMatch[1]);
-    if (lotMatch) {
-        let rawLot = lotMatch[1].split(/(?:17\d{6}|01\d{14}|21[A-Za-z0-9]+)/)[0];
-        result.lot = rawLot.trim();
-    }
-
-    return result;
-}
-    // 4. แสดงผลข้อมูลลงในหน้าเว็บ
+    // 4. แสดงผลข้อมูลลงบน UI
     function displayResults(data) {
         document.getElementById('resType').innerText = data.type;
         document.getElementById('resGtin').innerText = data.gtin;
         document.getElementById('resLot').innerText = data.lot;
         document.getElementById('resExp').innerText = data.exp;
+        document.getElementById('resLen').innerText = data.len + ' ตัวอักษร';
+        document.getElementById('resCleaned').innerText = data.cleanRaw;
         document.getElementById('resRaw').innerText = data.raw;
     }
 </script>
